@@ -131,8 +131,10 @@ bash deploy-local.sh
 | `SSH_PRIVATE_KEY` | `~/.ssh/id_ed25519_penguin` 的**完整私钥内容**（含 `-----BEGIN/END-----` 两行） |
 | `SSH_SITE_ROOT` | `/www/wwwroot/tutorial.baimuyuan.online` |
 
-> ⚠️ 未配置 Secrets 前，工作流会在「上传到中转目录」这步失败——属预期现象，配好即可。
-> 该自动部署链路**尚未用真实 Secrets 实跑验证**；首次配置后请到 Actions 页面看一次运行结果。
+> ✅ 上述 5 个 Secrets **已配置完成**，自动部署链路**已实跑验证成功**（运行 #9：构建、两次中转上传、sudo 安装全部 `success`）。
+> 若将来 Secrets 缺失或私钥失效，工作流会在「上传教程站到中转目录」这步失败（报认证/权限错误）——重新按上表写入即可。
+>
+> **换密钥时**：本地生成新密钥对 → 新公钥追加到服务器 `admin` 的 `authorized_keys` → 用新私钥内容更新 `SSH_PRIVATE_KEY` Secret → 触发一次工作流验证 → 再删除旧公钥。
 
 ---
 
