@@ -1,10 +1,15 @@
 name: 部署到阿里云 (SSH)
 
-# 推送到 main 后自动构建并上传到服务器
+# 推送到 main 后自动构建并部署；也可在 Actions 页面手动触发
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}   # 允许手动触发
+  workflow_dispatch: {}
+
+# 同一时间只跑一个部署，新的推送取消进行中的旧部署
+concurrency:
+  group: deploy-tutorial
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
@@ -25,7 +30,9 @@ jobs:
       - name: 构建静态站
         run: npm run build
 
-      - name: 通过 SSH 上传 dist 到服务器
+      # ① 教程站产物 → 服务器中转目录
+      #    admin 可直接写 /tmp，无需 sudo；strip_components 去掉 .vitepress/dist 前缀
+      - name: 上传教程站到中转目录
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -33,6 +40,39 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           source: ".vitepress/dist/*"
-          target: ${{ secrets.SSH_DEPLOY_PATH }}
-          strip_components: 2            # 去掉 .vitepress/dist 前缀，直接放目标目录
-          rm: true                        # 先清空目标目录再上传，避免旧文件残留
+          target: /tmp/dsh-deploy/dist
+          strip_components: 2
+          rm: true
+
+      # ② 合集首页（站点根 index.html）→ 中转目录
+      - name: 上传合集首页到中转目录
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "home/index.html"
+          target: /tmp/dsh-deploy
+          rm: false
+
+      # ③ sudo 安装进网站目录
+      #    网站目录属主是 www-data，admin 无写权限但有免密 sudo，故用 sudo 拷贝
+      - name: 安装到网站目录（sudo）
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            ROOT="${{ secrets.SSH_SITE_ROOT }}"
+            DEST="$ROOT/deepseek-harness-tutorial"
+            test -n "$ROOT"
+            sudo mkdir -p "$DEST"
+            sudo find "$DEST" -mindepth 1 -delete
+            sudo cp -rf /tmp/dsh-deploy/dist/. "$DEST"/
+            sudo cp -f /tmp/dsh-deploy/home/index.html "$ROOT/index.html"
+            sudo chown -R www-data:www-data "$DEST" "$ROOT/index.html"
+            echo "deployed -> $DEST  (+ $ROOT/index.html)"
